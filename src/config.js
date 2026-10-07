@@ -17,6 +17,9 @@ export const config = {
   port: num('PORT', 3000),
   mlSiteId: process.env.ML_SITE_ID || 'MLB',
   mlAccessToken: process.env.ML_ACCESS_TOKEN || '',
+  mlClientId: process.env.ML_CLIENT_ID || '',
+  mlClientSecret: process.env.ML_CLIENT_SECRET || '',
+  mlRedirectUri: process.env.ML_REDIRECT_URI || '',
   minDiscountPercent: num('MIN_DISCOUNT_PERCENT', 20),
   candidatesPerCategory: num('CANDIDATES_PER_CATEGORY', 30),
   categoryPatterns: String(process.env.CATEGORY_PATTERNS || 'Esportes e Fitness,Calçados Roupas e Bolsas,Games,Eletrônicos Áudio e Vídeo,Celulares e Telefones,Informática')

@@ -1,16 +1,16 @@
 import { config } from './config.js'
 import { wasPostedRecently, getAffiliateLink } from './db.js'
+import { getAccessToken } from './ml-auth.js'
 
 const API = 'https://api.mercadolibre.com'
 
-function headers() {
-  const h = { Accept: 'application/json' }
-  if (config.mlAccessToken) h.Authorization = `Bearer ${config.mlAccessToken}`
-  return h
+async function headers() {
+  const token = await getAccessToken()
+  return { Accept: 'application/json', Authorization: `Bearer ${token}` }
 }
 
 async function mlGet(path) {
-  const res = await fetch(`${API}${path}`, { headers: headers() })
+  const res = await fetch(`${API}${path}`, { headers: await headers() })
   if (!res.ok) {
     const body = await res.text().catch(() => '')
     throw new Error(`Mercado Livre API ${res.status}: ${body.slice(0, 300)}`)
