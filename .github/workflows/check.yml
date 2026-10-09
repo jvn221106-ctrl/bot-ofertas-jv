@@ -22,3 +22,12 @@ jobs:
       - run: npm ci
       - run: npm run check
       - run: npm test
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Construir imagem com compilação nativa do SQLite
+        run: docker build --build-arg npm_config_build_from_source=true --tag bot-ofertas-jv:ci .
+      - name: Executar testes dentro da imagem de produção
+        run: docker run --rm --env DRY_RUN=true bot-ofertas-jv:ci npm test
