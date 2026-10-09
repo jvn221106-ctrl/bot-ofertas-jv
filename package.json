@@ -1,24 +1,26 @@
 {
   "name": "ml-ofertas-whatsapp-bot",
-  "version": "0.1.0",
+  "version": "0.2.1",
   "private": true,
   "type": "module",
   "description": "Bot de ofertas do Mercado Livre para grupo público do WhatsApp, com filtro de desconto, histórico e agenda 07:00-23:45.",
   "scripts": {
     "start": "node src/index.js",
-    "dry-run": "DRY_RUN=true node src/index.js",
-    "check": "node --check src/index.js && node --check src/config.js && node --check src/db.js && node --check src/mercadolivre.js && node --check src/affiliate.js && node --check src/whatsapp.js && node --check src/scheduler.js && node --check src/server.js"
+    "dry-run": "node src/index.js --dry-run",
+    "doctor": "node src/doctor.js",
+    "test": "node --experimental-test-module-mocks --test",
+    "check": "node scripts/check.js"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22.9"
   },
   "dependencies": {
-    "@whiskeysockets/baileys": "latest",
-    "better-sqlite3": "latest",
-    "dotenv": "latest",
-    "express": "latest",
-    "node-cron": "latest",
-    "pino": "latest",
-    "qrcode-terminal": "latest"
+    "@whiskeysockets/baileys": "7.0.0-rc14",
+    "better-sqlite3": "13.0.3",
+    "dotenv": "18.0.6",
+    "express": "5.2.1",
+    "node-cron": "4.6.0",
+    "pino": "10.4.0",
+    "qrcode-terminal": "0.12.0"
   }
 }

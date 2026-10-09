@@ -1,8 +1,9 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import Database from 'better-sqlite3'
+import { config } from './config.js'
 
-const dataDir = path.resolve('./data')
+const dataDir = path.resolve(config.dataDir)
 fs.mkdirSync(dataDir, { recursive: true })
 const db = new Database(path.join(dataDir, 'bot.sqlite'))
 
@@ -38,6 +39,7 @@ export function wasPostedRecently(itemId, days) {
     SELECT 1
     FROM posts
     WHERE item_id = ?
+      AND COALESCE(whatsapp_message_id, '') <> 'dry-run'
       AND datetime(sent_at) >= datetime('now', ?)
     LIMIT 1
   `).get(itemId, `-${Math.max(0, days)} days`)
@@ -80,16 +82,18 @@ export function getAffiliateLink(itemId) {
 }
 
 export function recentPosts(limit = 50) {
+  const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.min(500, Math.floor(limit))) : 50
   return db.prepare(`
     SELECT * FROM posts
+    WHERE COALESCE(whatsapp_message_id, '') <> 'dry-run'
     ORDER BY id DESC
     LIMIT ?
-  `).all(Math.max(1, Math.min(500, limit)))
+  `).all(safeLimit)
 }
 
 export function stats() {
-  const total = db.prepare('SELECT COUNT(*) AS n FROM posts').get().n
-  const today = db.prepare(`SELECT COUNT(*) AS n FROM posts WHERE date(sent_at, 'localtime') = date('now', 'localtime')`).get().n
+  const total = db.prepare("SELECT COUNT(*) AS n FROM posts WHERE COALESCE(whatsapp_message_id, '') <> 'dry-run'").get().n
+  const today = db.prepare(`SELECT COUNT(*) AS n FROM posts WHERE COALESCE(whatsapp_message_id, '') <> 'dry-run' AND date(sent_at, 'localtime') = date('now', 'localtime')`).get().n
   const links = db.prepare('SELECT COUNT(*) AS n FROM affiliate_links').get().n
   return { totalPosts: total, postsToday: today, affiliateLinks: links }
 }

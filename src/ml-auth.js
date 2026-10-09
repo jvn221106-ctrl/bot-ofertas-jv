@@ -5,8 +5,9 @@ import { config } from './config.js'
 
 const TOKEN_URL = 'https://api.mercadolibre.com/oauth/token'
 const AUTH_URL = 'https://auth.mercadolivre.com.br/authorization'
-const TOKEN_FILE = path.join('data', 'ml-oauth.json')
+const TOKEN_FILE = path.resolve(config.dataDir, 'ml-oauth.json')
 const pending = new Map()
+let refreshing = null
 
 function base64url(buf) {
   return buf.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '')
@@ -19,32 +20,50 @@ function ensureDataDir() {
 function readStoredToken() {
   try {
     return JSON.parse(fs.readFileSync(TOKEN_FILE, 'utf8'))
-  } catch {
-    return null
+  } catch (error) {
+    if (error.code === 'ENOENT') return null
+    throw new Error('Não foi possível ler data/ml-oauth.json. Verifique o arquivo de tokens e autorize novamente.')
   }
 }
 
 function writeStoredToken(token) {
+  const lifetime = Number(token.expires_in)
+  if (typeof token.access_token !== 'string' || !token.access_token
+    || typeof token.refresh_token !== 'string' || !token.refresh_token
+    || !Number.isFinite(lifetime) || lifetime <= 0) {
+    throw new Error('OAuth Mercado Livre: resposta de tokens incompleta. Os tokens anteriores foram preservados.')
+  }
   ensureDataDir()
   const safe = {
     access_token: token.access_token,
     refresh_token: token.refresh_token,
     token_type: token.token_type || 'bearer',
-    expires_in: Number(token.expires_in || 21600),
-    expires_at: Date.now() + Number(token.expires_in || 21600) * 1000,
+    expires_in: lifetime,
+    expires_at: Date.now() + lifetime * 1000,
     user_id: token.user_id || null,
     scope: token.scope || null,
     updated_at: new Date().toISOString(),
   }
-  fs.writeFileSync(TOKEN_FILE, JSON.stringify(safe, null, 2), { mode: 0o600 })
+  const tempFile = TOKEN_FILE + '.' + crypto.randomUUID() + '.tmp'
+  try {
+    fs.writeFileSync(tempFile, JSON.stringify(safe, null, 2), { mode: 0o600 })
+    fs.renameSync(tempFile, TOKEN_FILE)
+  } finally {
+    fs.rmSync(tempFile, { force: true })
+  }
   return safe
 }
 
-function requireOAuthConfig() {
+function missingOAuthConfig() {
   const missing = []
   if (!config.mlClientId) missing.push('ML_CLIENT_ID')
   if (!config.mlClientSecret) missing.push('ML_CLIENT_SECRET')
   if (!config.mlRedirectUri) missing.push('ML_REDIRECT_URI')
+  return missing
+}
+
+function requireOAuthConfig() {
+  const missing = missingOAuthConfig()
   if (missing.length) throw new Error(`Faltam variáveis OAuth: ${missing.join(', ')}`)
 }
 
@@ -57,6 +76,7 @@ async function tokenRequest(params) {
       'Content-Type': 'application/x-www-form-urlencoded',
     },
     body: new URLSearchParams(params),
+    signal: AbortSignal.timeout(config.mlRequestTimeoutMs),
   })
   const data = await res.json().catch(() => ({}))
   if (!res.ok) {
@@ -118,25 +138,37 @@ async function refresh(stored) {
   })
 }
 
-export async function getAccessToken() {
+export async function getAccessToken({ forceRefresh = false, rejectedToken = null } = {}) {
   const stored = readStoredToken()
   if (stored?.access_token) {
-    if (!stored.expires_at || stored.expires_at - Date.now() > 2 * 60 * 1000) return stored.access_token
-    const renewed = await refresh(stored)
-    return renewed.access_token
+    const fresh = Number(stored.expires_at) - Date.now() > 2 * 60 * 1000
+    const alreadyRenewed = rejectedToken && stored.access_token !== rejectedToken
+    if (fresh && (!forceRefresh || alreadyRenewed)) return stored.access_token
+    if (!refreshing) refreshing = refresh(stored).finally(() => { refreshing = null })
+    return (await refreshing).access_token
   }
 
+  if (forceRefresh) throw new Error('Token manual recusado pelo Mercado Livre. Autorize novamente em /oauth/start ou atualize ML_ACCESS_TOKEN.')
   if (config.mlAccessToken) return config.mlAccessToken
   throw new Error('Mercado Livre ainda não autorizado. Abra /oauth/start no painel do bot.')
 }
 
 export function oauthStatus() {
-  const stored = readStoredToken()
+  let stored = null
+  let storageError = null
+  try { stored = readStoredToken() } catch (error) { storageError = error.message }
+  const missingConfig = missingOAuthConfig()
+  const expiresAt = Number(stored?.expires_at)
+  const fresh = Number.isFinite(expiresAt) && expiresAt > Date.now()
+  const canRefresh = Boolean(stored?.refresh_token && !missingConfig.length)
   return {
-    configured: Boolean(config.mlClientId && config.mlClientSecret && config.mlRedirectUri),
-    authorized: Boolean(stored?.access_token || config.mlAccessToken),
+    configured: !missingConfig.length,
+    missingConfig,
+    authorized: Boolean(stored?.access_token ? fresh || canRefresh : config.mlAccessToken && !storageError),
+    source: stored?.access_token ? 'oauth' : config.mlAccessToken ? 'manual' : null,
     userId: stored?.user_id || null,
-    expiresAt: stored?.expires_at ? new Date(stored.expires_at).toISOString() : null,
+    expiresAt: Number.isFinite(expiresAt) && expiresAt > 0 ? new Date(expiresAt).toISOString() : null,
     hasRefreshToken: Boolean(stored?.refresh_token),
+    storageError,
   }
 }

@@ -20,7 +20,7 @@ export function formatOfferMessage(offer) {
         : '⚡'
 
   return [
-    `${categoryEmoji} *OFERTA COM ${Math.round(offer.discountPercent)}% OFF* 🔥`,
+    `${categoryEmoji} *OFERTA COM ${new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 1 }).format(offer.discountPercent)}% OFF* 🔥`,
     '',
     `*${offer.title}*`,
     '',
@@ -32,7 +32,7 @@ export function formatOfferMessage(offer) {
     '',
     '📢 Publicidade | Link de afiliado',
     '⚠️ Preço e disponibilidade podem mudar sem aviso.',
-  ].filter(Boolean).join('\n')
+  ].filter((line) => line !== null).join('\n')
 }
 
 export async function runCycle(reason = 'cron') {
@@ -50,6 +50,11 @@ export async function runCycle(reason = 'cron') {
 
     const text = formatOfferMessage(offer)
     const result = await sendOffer(offer, text)
+    if (result.dryRun) {
+      lastOffer = { ...offer, simulatedAt: new Date().toISOString() }
+      console.log(`[Scheduler] Simulado: ${offer.itemId} - ${offer.title}`)
+      return { sent: false, simulated: true, offer: lastOffer, message: text }
+    }
     savePost({ ...offer, whatsappMessageId: result.messageId })
     lastOffer = { ...offer, sentAt: new Date().toISOString() }
     console.log(`[Scheduler] Enviado: ${offer.itemId} - ${offer.title}`)

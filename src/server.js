@@ -6,6 +6,7 @@ import { discoverCandidates } from './mercadolivre.js'
 import { listGroups, whatsappStatus } from './whatsapp.js'
 import { runCycle, schedulerStatus } from './scheduler.js'
 import { buildAuthorizationUrl, exchangeAuthorizationCode, oauthStatus } from './ml-auth.js'
+import { renderPanel } from './panel.js'
 
 function esc(s = '') {
   return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
@@ -66,16 +67,7 @@ export function startServer() {
   })
 
   app.get('/', (_req, res) => {
-    const s = stats()
-    const wa = whatsappStatus()
-    const sch = schedulerStatus()
-    const oauth = oauthStatus()
-    const rows = recentPosts(15).map((p) => `<tr><td>${esc(p.sent_at)}</td><td>${esc(p.item_id)}</td><td>${esc(p.title)}</td><td>${p.discount_percent}%</td></tr>`).join('')
-    const oauthBlock = oauth.authorized
-      ? `<p>✅ Mercado Livre autorizado${oauth.userId ? ` (usuário ${esc(oauth.userId)})` : ''}</p>`
-      : `<p>⚠️ Mercado Livre ainda não autorizado. <a href="/oauth/start">Conectar agora</a></p>`
-
-    res.type('html').send(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Bot de Ofertas</title><style>body{font-family:system-ui;margin:32px;max-width:1000px;color:#18181b}h1{margin-bottom:8px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}.card{border:1px solid #ddd;border-radius:12px;padding:16px}.muted{color:#666}table{width:100%;border-collapse:collapse;margin-top:16px}td,th{text-align:left;border-bottom:1px solid #eee;padding:8px}code{background:#f4f4f5;padding:2px 5px;border-radius:5px}a{color:#0757d8}</style></head><body><h1>Bot de Ofertas</h1><p class="muted">Mercado Livre → filtro ≥ ${config.minDiscountPercent}% → WhatsApp, ${esc(config.cron)}, ${esc(config.tz)}</p>${oauthBlock}<div class="grid"><div class="card"><strong>Modo</strong><div>${config.dryRun ? 'DRY RUN' : 'PRODUÇÃO'}</div></div><div class="card"><strong>WhatsApp</strong><div>${wa.connected ? 'Conectado' : 'Desconectado'}</div></div><div class="card"><strong>Posts hoje</strong><div>${s.postsToday}</div></div><div class="card"><strong>Links de afiliado</strong><div>${s.affiliateLinks}</div></div></div><h2>Status</h2><p>Última execução: <code>${esc(sch.lastRun || 'ainda não executou')}</code></p><p>Último erro: <code>${esc(sch.lastError || 'nenhum')}</code></p><h2>Histórico recente</h2><table><thead><tr><th>Data</th><th>Item</th><th>Produto</th><th>Desc.</th></tr></thead><tbody>${rows || '<tr><td colspan="4">Nenhum envio ainda.</td></tr>'}</tbody></table></body></html>`)
+    res.type('html').send(renderPanel({ s: stats(), wa: whatsappStatus(), sch: schedulerStatus(), oauth: oauthStatus() }))
   })
 
   return app.listen(config.port, '0.0.0.0', () => {

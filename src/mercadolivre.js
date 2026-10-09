@@ -4,13 +4,18 @@ import { getAccessToken } from './ml-auth.js'
 
 const API = 'https://api.mercadolibre.com'
 
-async function headers() {
-  const token = await getAccessToken()
-  return { Accept: 'application/json', Authorization: `Bearer ${token}` }
-}
-
 async function mlGet(path) {
-  const res = await fetch(`${API}${path}`, { headers: await headers() })
+  let token = await getAccessToken()
+  const request = () => fetch(`${API}${path}`, {
+    headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+    signal: AbortSignal.timeout(config.mlRequestTimeoutMs),
+  })
+  let res = await request()
+  if (res.status === 401) {
+    await res.body?.cancel()
+    token = await getAccessToken({ forceRefresh: true, rejectedToken: token })
+    res = await request()
+  }
   if (!res.ok) {
     const body = await res.text().catch(() => '')
     throw new Error(`Mercado Livre API ${res.status}: ${body.slice(0, 300)}`)
@@ -39,8 +44,8 @@ export async function resolveTargetCategories() {
 function calcDiscount(item) {
   const price = Number(item.price)
   const original = Number(item.original_price)
-  if (!price || !original || original <= price) return 0
-  return Math.round(((original - price) / original) * 1000) / 10
+  if (!Number.isFinite(price) || !Number.isFinite(original) || price <= 0 || original <= price) return 0
+  return ((original - price) / original) * 100
 }
 
 function reputationBonus(item) {
@@ -75,8 +80,11 @@ export async function discoverCandidates() {
     for (const item of result.results || []) {
       const discountPercent = calcDiscount(item)
       if (discountPercent < config.minDiscountPercent) continue
+      if (!Number.isFinite(Number(item.price)) || Number(item.price) <= 0) continue
+      if (item.status && item.status !== 'active') continue
+      if (item.currency_id && item.currency_id !== 'BRL') continue
       if (!isNew(item)) continue
-      if (Number(item.available_quantity || 1) <= 0) continue
+      if (Number(item.available_quantity ?? 1) <= 0) continue
       if (wasPostedRecently(item.id, config.repeatBlockDays)) continue
 
       const affiliate = getAffiliateLink(item.id)
@@ -85,7 +93,7 @@ export async function discoverCandidates() {
         title: item.title,
         price: Number(item.price),
         originalPrice: Number(item.original_price) || null,
-        discountPercent,
+        discountPercent: Math.floor(discountPercent * 10) / 10,
         categoryId: item.category_id,
         categoryName: category.name,
         permalink: item.permalink,
