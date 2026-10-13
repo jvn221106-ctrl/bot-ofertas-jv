@@ -18,7 +18,8 @@ async function mlGet(path) {
   }
   if (!res.ok) {
     const body = await res.text().catch(() => '')
-    throw new Error(`Mercado Livre API ${res.status}: ${body.slice(0, 300)}`)
+    const endpoint = path.split('?')[0]
+    throw new Error(`Mercado Livre API ${res.status} em ${endpoint}: ${body.slice(0, 300)}`)
   }
   return res.json()
 }
